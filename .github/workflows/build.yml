@@ -1,0 +1,29 @@
+name: Build Custom OS Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap parted kpartx dosfstools \
+            grub-pc-bin grub-efi-ia32-bin grub-common xorriso rsync
+
+      - name: Build image
+        run: sudo python3 compile_image.py
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-os-image
+          path: build/*.img
+          retention-days: 14
