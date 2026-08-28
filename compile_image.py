@@ -47,14 +47,34 @@ def debootstrap_rootfs():
         print(f"==> Rootfs already exists at {config.ROOTFS_DIR}, skipping debootstrap")
         return
     os.makedirs(config.ROOTFS_DIR, exist_ok=True)
+
+    # Two-stage debootstrap so we can drop in a policy-rc.d stub before the
+    # second stage runs. Without it, packages like dconf-service/polkitd try
+    # to actually start their systemd service during postinst, which fails
+    # in CI runners / containers that don't have a real init system, and
+    # takes the whole debootstrap down with it.
     run([
         "debootstrap",
+        "--foreign",
         f"--arch={config.ARCH}",
         "--include=" + ",".join(config.PACKAGES),
         config.DISTRO,
         config.ROOTFS_DIR,
         config.MIRROR,
     ])
+
+    policy_path = os.path.join(config.ROOTFS_DIR, "usr", "sbin", "policy-rc.d")
+    os.makedirs(os.path.dirname(policy_path), exist_ok=True)
+    with open(policy_path, "w") as f:
+        f.write("#!/bin/sh\nexit 101\n")
+    os.chmod(policy_path, 0o755)
+
+    run(["chroot", config.ROOTFS_DIR, "/debootstrap/debootstrap", "--second-stage"])
+
+    # Leave policy-rc.d in place for now -- configure_chroot() still needs it
+    # while it runs `systemctl enable` calls (enabling doesn't start anything,
+    # but some postinst scripts double-check). It gets removed at the end of
+    # configure_chroot() so the real system can start services normally.
 
 
 def configure_chroot():
@@ -85,6 +105,12 @@ def configure_chroot():
             subprocess.run(["umount", "-lf", target])
 
     os.remove(setup_dst)
+
+    # Remove the policy-rc.d stub now that all package configuration is done,
+    # so the real system boots and starts services normally.
+    policy_path = os.path.join(config.ROOTFS_DIR, "usr", "sbin", "policy-rc.d")
+    if os.path.exists(policy_path):
+        os.remove(policy_path)
 
 
 def build_disk_image():
