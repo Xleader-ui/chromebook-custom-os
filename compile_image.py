@@ -49,10 +49,10 @@ def debootstrap_rootfs():
     os.makedirs(config.ROOTFS_DIR, exist_ok=True)
 
     # Two-stage debootstrap so we can drop in a policy-rc.d stub before the
-    # second stage runs. Without it, packages like dconf-service/polkitd try
-    # to actually start their systemd service during postinst, which fails
-    # in CI runners / containers that don't have a real init system, and
-    # takes the whole debootstrap down with it.
+    # second stage runs. Without it, packages that ship systemd units try to
+    # actually start their service during postinst, which fails in CI
+    # runners / containers that don't have a real init system, and takes
+    # the whole debootstrap down with it.
     run([
         "debootstrap",
         "--foreign",
@@ -69,7 +69,18 @@ def debootstrap_rootfs():
         f.write("#!/bin/sh\nexit 101\n")
     os.chmod(policy_path, 0o755)
 
-    run(["chroot", config.ROOTFS_DIR, "/debootstrap/debootstrap", "--second-stage"])
+    try:
+        run(["chroot", config.ROOTFS_DIR, "/debootstrap/debootstrap", "--second-stage"])
+    except subprocess.CalledProcessError:
+        log_path = os.path.join(config.ROOTFS_DIR, "debootstrap", "debootstrap.log")
+        print(f"\n===== dumping {log_path} =====")
+        if os.path.exists(log_path):
+            with open(log_path, errors="replace") as f:
+                print(f.read())
+        else:
+            print("(log file not found)")
+        print("===== end of debootstrap.log =====\n")
+        raise
 
     # Leave policy-rc.d in place for now -- configure_chroot() still needs it
     # while it runs `systemctl enable` calls (enabling doesn't start anything,
