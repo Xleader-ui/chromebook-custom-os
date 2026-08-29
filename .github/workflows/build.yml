@@ -1,4 +1,4 @@
-name: Build Custom OS Image
+name: Build Custom OS
 
 on:
   workflow_dispatch:
@@ -12,18 +12,22 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y debootstrap parted kpartx dosfstools \
-            grub-pc-bin grub-efi-ia32-bin grub-common xorriso rsync
+          sudo apt-get install -y gcc-multilib nasm grub-pc-bin grub-common xorriso mtools
 
-      - name: Build image
-        run: sudo python3 compile_image.py
+      - name: Compile kernel
+        run: make
 
-      - name: Upload image artifact
+      - name: Build ISO
+        run: |
+          chmod +x build_iso.sh
+          ./build_iso.sh
+
+      - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: custom-os-image
-          path: build/*.img
+          name: custom-os-iso
+          path: os.iso
           retention-days: 14
